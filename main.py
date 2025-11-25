@@ -1,14 +1,5 @@
 # ============================================================
-# Telegram Temp Number Bot - Final Version
-# Full System:
-# - Pure Reply Keyboard Main Menu
-# - Inline button ONLY for XTGLINKS verification
-# - One-Time Verification Links (HV_XXXX)
-# - Channel Join Required
-# - Auto Verification
-# - Auto Referral Credit
-# - Admin Panel (Reply Keyboard UI)
-# - JSON DB (Heroku Safe)
+# Telegram Temp Number Bot - Clean & Updated Final Version
 # ============================================================
 
 import os, json, time, random, requests
@@ -55,14 +46,17 @@ def ensure_db():
                 "one_time_links": {}
             }, f, indent=2)
 
+
 def load_db():
     ensure_db()
     with open(DB_PATH, "r") as f:
         return json.load(f)
 
+
 def save_db(db):
     with open(DB_PATH, "w") as f:
         json.dump(db, f, indent=2)
+
 
 def get_user(db, uid):
     return db["users"].get(str(uid), {
@@ -72,8 +66,10 @@ def get_user(db, uid):
         "used_numbers": []
     })
 
+
 def set_user(db, uid, data):
     db["users"][str(uid)] = data
+
 
 # ============================================================
 # XTGLINKS Shortener
@@ -90,8 +86,9 @@ def create_xtg_short(api_key, dest_url, alias):
     except:
         return None
 
+
 # ============================================================
-# One-Time Link
+# One-Time HV Link
 # ============================================================
 def generate_one_time_link(app, uid, db):
     code = f"HV_{uid}_{int(time.time())}_{random.randint(1000,9999)}"
@@ -100,8 +97,9 @@ def generate_one_time_link(app, uid, db):
     bot_username = app.get_me().username
     return f"https://t.me/{bot_username}?start={code}", code
 
+
 # ============================================================
-# Reply Keyboards
+# Keyboards
 # ============================================================
 USER_KB = ReplyKeyboardMarkup(
     [
@@ -131,35 +129,28 @@ JOIN_KB = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# ============================================================
-# Admin Only Decorator
-# ============================================================
-def admin_only(f):
-    @wraps(f)
-    def wrapper(client, message):
-        if message.from_user.id not in ADMIN_IDS:
-            return message.reply("❌ Not admin.")
-        return f(client, message)
-    return wrapper
 
 # ============================================================
-# Check Required Channels
+# Helpers
 # ============================================================
 def not_joined_channels(client, uid, db):
+    channels = db["settings"].get("channels", [])
     result = []
-    for ch in db["settings"]["channels"]:
+    for ch in channels:
         try:
-            mem = client.get_chat_member(ch, uid)
-            if mem.status in ("left", "kicked"):
+            m = client.get_chat_member(ch, uid)
+            if m.status in ("left", "kicked"):
                 result.append(ch)
         except:
             result.append(ch)
     return result
 
+
 # ============================================================
-# Bot Init
+# App Init
 # ============================================================
 app = Client("otpbot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+
 
 # ============================================================
 # START COMMAND
@@ -170,20 +161,24 @@ def start_cmd(client, message):
     uid = message.from_user.id
     args = message.text.split()
 
-    # -----------------------------------------
-    # HANDLE ONE-TIME LINK (AUTO VERIFICATION)
-    # -----------------------------------------
+    # ----- ADMIN BYPASS -----
+    if uid in ADMIN_IDS:
+        return message.reply("Admin Panel:", reply_markup=ADMIN_KB)
+
+    # ----- HANDLE HV AUTO VERIFICATION -----
     if len(args) > 1 and args[1].startswith("HV_"):
         code = args[1]
+
         if code not in db["one_time_links"]:
             return message.reply("❌ Invalid verification link.")
 
         info = db["one_time_links"][code]
+
         if info["used"]:
             return message.reply("❌ Link expired.")
 
         if info["user_id"] != uid:
-            return message.reply("❌ This link is not for you.")
+            return message.reply("❌ This link is not for your account.")
 
         # Mark used
         info["used"] = True
@@ -193,24 +188,23 @@ def start_cmd(client, message):
         user = get_user(db, uid)
         user["verified"] = True
 
-        # Credit referral only now
+        # Referral credit
         if user.get("referred_by"):
             ref = user["referred_by"]
             ref_user = get_user(db, ref)
             ref_user["invites"] += 1
             set_user(db, ref, ref_user)
             try:
-                client.send_message(ref, f"🎉 Referral Verified! Total invites: {ref_user['invites']}")
+                client.send_message(ref, f"🎉 Referral Verified!\nTotal invites: {ref_user['invites']}")
             except:
                 pass
 
         set_user(db, uid, user)
         save_db(db)
+
         return message.reply("🎉 Verification Completed!", reply_markup=USER_KB)
 
-    # -----------------------------------------
-    # NORMAL START
-    # -----------------------------------------
+    # ----- REFERRAL LOGIC -----
     ref = None
     if len(args) > 1:
         try:
@@ -220,30 +214,30 @@ def start_cmd(client, message):
         except:
             ref = None
 
-    user = get_user(db, uid)
+    # Create user entry if not exists
     if str(uid) not in db["users"]:
+        user = get_user(db, uid)
         if ref:
             user["referred_by"] = ref
         set_user(db, uid, user)
         save_db(db)
 
-    # FIRST: Check Channels
-    not_joined = not_joined_channels(client, uid, db)
-    if not_joined:
+    # ----- CHANNEL CHECK -----
+    not_join = not_joined_channels(client, uid, db)
+    if not_join:
         return message.reply(
-            "📛 You must join all required channels:\n" + "\n".join(not_joined),
+            "📛 You must join all required channels:\n" + "\n".join(not_join),
             reply_markup=JOIN_KB
         )
 
-    # If not verified
+    # ----- VERIFICATION CHECK -----
+    user = get_user(db, uid)
     if not user.get("verified"):
         api_key = db["settings"]["xtg_api_key"]
         if not api_key:
-            return message.reply("❌ XTGLINKS key not set by admin.")
+            return message.reply("❌ Admin has not set XTGLINKS API key.")
 
-        # create one-time link
         one_time, code = generate_one_time_link(client, uid, db)
-
         alias = f"v{uid}_{int(time.time())}"
         short_url = create_xtg_short(api_key, one_time, alias)
 
@@ -251,8 +245,7 @@ def start_cmd(client, message):
             return message.reply("❌ XTGLINKS API failed.")
 
         return message.reply(
-            "🧩 Human Verification Required\n\n"
-            "Click the button below to verify:",
+            "🧩 Human Verification Required\n\nClick the button below:",
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("Verify Now 🔗", url=short_url)]]
             )
@@ -260,44 +253,54 @@ def start_cmd(client, message):
 
     return message.reply("👋 Welcome!", reply_markup=USER_KB)
 
+
 # ============================================================
-# USER BUTTONS HANDLER
+# USER BUTTONS
 # ============================================================
 @app.on_message(filters.text & filters.private)
 def user_buttons(client, message):
     db = load_db()
     uid = message.from_user.id
-    user = get_user(db, uid)
     text = message.text
 
-    # Global Channel Check
-    not_joined = not_joined_channels(client, uid, db)
-    if not_joined:
-        return message.reply(
-            "📛 Join all channels:\n" + "\n".join(not_joined),
-            reply_markup=JOIN_KB
-        )
-
-    # Verification Check
-    if not user.get("verified"):
-        api_key = db["settings"]["xtg_api_key"]
-        one_time, code = generate_one_time_link(client, uid, db)
-        alias = f"v{uid}_{int(time.time())}"
-        short_url = create_xtg_short(api_key, one_time, alias)
-        return message.reply(
-            "🧩 Please verify first:",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("Verify Now 🔗", url=short_url)]]
+    # ---- ADMIN BYPASS ----
+    if uid in ADMIN_IDS:
+        if text == "/admin":
+            return message.reply("Admin Panel:", reply_markup=ADMIN_KB)
+        # Admin functions processed later
+    else:
+        # ---- CHANNEL CHECK ----
+        not_join = not_joined_channels(client, uid, db)
+        if not_join:
+            return message.reply(
+                "📛 Join all channels:\n" + "\n".join(not_join),
+                reply_markup=JOIN_KB
             )
-        )
 
-    # -------------------------
-    #  MENU BUTTONS
-    # -------------------------
+        # ---- VERIFICATION CHECK ----
+        user = get_user(db, uid)
+        if not user.get("verified"):
+            api_key = db["settings"]["xtg_api_key"]
+            one_time, code = generate_one_time_link(client, uid, db)
+            alias = f"v{uid}_{int(time.time())}"
+            short_url = create_xtg_short(api_key, one_time, alias)
+
+            return message.reply(
+                "🧩 Please verify first:",
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("Verify Now 🔗", url=short_url)]]
+                )
+            )
+
+    # ==========================
+    # USER MENU BUTTONS
+    # ==========================
+    user = get_user(db, uid)
+
     if text == "❓ How to Use":
         req = db["settings"]["required_invites"]
         return message.reply(
-            f"📘 You must verify + invite {req} users.",
+            f"📘 You must verify + invite {req} users to use this bot.",
             reply_markup=USER_KB
         )
 
@@ -305,8 +308,7 @@ def user_buttons(client, message):
         bot_username = client.get_me().username
         link = f"https://t.me/{bot_username}?start={uid}"
         return message.reply(
-            f"🔗 *Your Invite Link:*\n{link}\n\n"
-            f"👥 Invites: {user['invites']}",
+            f"🔗 Your Invite Link:\n{link}\n\nInvites: {user['invites']}",
             reply_markup=USER_KB
         )
 
@@ -337,14 +339,16 @@ def user_buttons(client, message):
             reply_markup=USER_KB
         )
 
-    # ---- ADMIN PANEL ----
-    if message.from_user.id in ADMIN_IDS:
-        if text == "/admin" or text == "⬅️ Back to Main Menu":
+    # ============================================================
+    # ADMIN COMMANDS
+    # ============================================================
+    if uid in ADMIN_IDS:
+
+        if text == "⬅️ Back to Main Menu":
             return message.reply("Admin Panel:", reply_markup=ADMIN_KB)
 
         if text == "🛠 Set Invites":
-            message.reply("Send: /setinvites 5")
-            return
+            return message.reply("Send: /setinvites 5")
 
         if text.startswith("/setinvites"):
             try:
@@ -394,27 +398,31 @@ def user_buttons(client, message):
 
         if text == "📊 Stats":
             total = len(db["users"])
-            verified = sum(1 for u in db["users"].values() if u.get("verified"))
-            return message.reply(f"Users: {total}\nVerified: {verified}", reply_markup=ADMIN_KB)
+            ver = sum(1 for u in db["users"].values() if u.get("verified"))
+            return message.reply(
+                f"Users: {total}\nVerified: {ver}",
+                reply_markup=ADMIN_KB
+            )
 
         if text == "📢 Broadcast":
-            return message.reply("Send: /bc <message>")
+            return message.reply("Send: /bc message")
 
         if text.startswith("/bc"):
             msg = text.replace("/bc", "").strip()
             sent = 0
-            for uid2 in db["users"].keys():
+            for x in db["users"].keys():
                 try:
-                    client.send_message(int(uid2), msg)
+                    client.send_message(int(x), msg)
                     sent += 1
                 except:
                     pass
             return message.reply(f"Sent: {sent}", reply_markup=ADMIN_KB)
+
 
 # ============================================================
 # RUN BOT
 # ============================================================
 if __name__ == "__main__":
     ensure_db()
-    print("BOT READY ✔")
+    print("BOT ONLINE ✔")
     app.run()
