@@ -94,7 +94,23 @@ def create_xtg_short(api_key, dest_url, alias):
         return data.get("shortenedUrl")
     except:
         return None
+# ============================================================
+# CHECK REQUIRED CHANNELS
+# ============================================================
+def not_joined_channels(client, uid, db):
+    channels = db["settings"].get("channels", [])
+    missing = []
 
+    for ch in channels:
+        try:
+            member = client.get_chat_member(ch, uid)
+            if member.status in ("left", "kicked"):
+                missing.append(ch)
+        except Exception:
+            # If channel not found or bot not in channel, also treat as missing
+            missing.append(ch)
+
+    return missing
 # ============================================================
 # ONE-TIME VERIFICATION LINK
 # ============================================================
