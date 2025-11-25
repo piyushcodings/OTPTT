@@ -20,6 +20,7 @@ from functools import wraps
 from typing import Dict, Any, Optional, List
 
 from pyrogram import Client, filters
+from pyrogram.enums import ParseMode
 from pyrogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
@@ -400,7 +401,7 @@ def process_otp_and_send(msg, app_name):
     final = random.choice(templates).format(otp=otp)
 
     try:
-        msg.edit_text(f"📨 Incoming Message from *{app_name}*\n\n{final}", parse_mode="markdown")
+        msg.edit_text(f"📨 Incoming Message from **{app_name}**\n\n{final}", parse_mode=ParseMode.MARKDOWN)
     except Exception:
         try:
             msg.edit_text(f"📨 {app_name}: {final}")
@@ -583,7 +584,7 @@ def user_buttons(client, message):
         # show number and ask for Get OTP
         return message.reply(
             f"📱 Your Temp Number:\n`{number}`\n\nPress Get OTP to receive incoming verification messages.",
-            parse_mode="markdown",
+            parse_mode=ParseMode.MARKDOWN,
             reply_markup=ReplyKeyboardMarkup([["📨 Get OTP"], ["⬅️ Back"]], resize_keyboard=True)
         )
 
