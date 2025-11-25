@@ -38,7 +38,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "8496569281:AAHuz4BPGlRuklpo21yYejBwxxbl
 ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "5748100919").split(",") if x.strip().isdigit()]
 
 # Heroku persistence (optional but recommended)
-HEROKU_API_KEY = os.environ.get("HEROKU_API_KEY", "HRKU-523dd6da-a489-4adc-86d2-028b07bd7357")  # set in Heroku config if you want runtime writes to config var
+HEROKU_API_KEY = os.environ.get("HEROKU_API_KEY", "HRKU-0197c56d-3222-4875-8417-83f9da674fb3")  # set in Heroku config if you want runtime writes to config var
 HEROKU_APP_NAME = os.environ.get("HEROKU_APP_NAME", "otptt")  # your heroku app name
 DB_CONFIGVAR_NAME = "DB_DATA"  # config var key to store DB JSON
 
